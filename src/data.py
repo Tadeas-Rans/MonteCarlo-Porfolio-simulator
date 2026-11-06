@@ -66,6 +66,25 @@ def download_prices(tickers, start, end):
     return remove_spikes(prices)
 
 
+def trim_history(prices, years):
+    """Keep only the last `years` years of prices. None keeps everything.
+
+    If there is less history than asked for (because the youngest ETF is too new),
+    all of it is kept and a warning is printed, so the user knows the real window.
+    """
+    if years is None:                                     # None = no limit, use every week we have
+        return prices
+    available = (prices.index[-1] - prices.index[0]).days / 365.25   # years between first and last week
+    if available < years:                                 # asked for more than exists?
+        print(f"Warning: asked for {years} years of history, but all ETFs together only have "
+              f"{available:.1f} years (from {prices.index[0].date()}). Using all of it.")
+        return prices
+    # pd.DateOffset(years=...) counts calendar years back, so leap years are handled for us.
+    # It needs a whole number, so a fraction like 7.5 years is converted to months first.
+    cutoff = prices.index[-1] - pd.DateOffset(months=round(years * 12))
+    return prices[prices.index >= cutoff]                 # keep the rows on or after the cutoff date
+
+
 def remove_spikes(prices, threshold=5.0):
     """Find one-week data errors ("spikes") and replace them by interpolation.
 

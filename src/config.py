@@ -47,8 +47,9 @@ CONFIG = {
     "target_in_todays_money": False,      # False: the target is in future (nominal) euros
     "report_in_todays_money": False,      # False: show everything in nominal euros; True: also today's money
     # ---- Price history ----
-    "data_start": "2016-01-01",           # first date of price history to download (YYYY-MM-DD)
+    "data_start": "2000-01-01",           # earliest date to download (YYYY-MM-DD); wide, so old ETFs keep their history
     "data_end": "2026-11-01",             # last date; fixed (not "today") so every run uses the same data
+    "history_years": None,                # years of past data to learn from; None = every week all ETFs have
 }
 
 
@@ -102,6 +103,9 @@ def validate_config(config):
         raise ValueError("contribution_growth must be None or greater than -1 (= -100%).")
     if not isinstance(config["index_every_weeks"], int) or config["index_every_weeks"] < 1:
         raise ValueError("index_every_weeks must be a whole number of at least 1.")
+    history = config["history_years"]
+    if history is not None and history <= 0:           # None is allowed: it means "use all the data"
+        raise ValueError("history_years must be None or greater than 0.")
 
 
 # Run the check as soon as this file is imported, so a bad setting is caught immediately.

@@ -70,6 +70,7 @@ All settings are in `src/config.py`:
 | `savings_rate` | Interest on the savings-account alternative |
 | `target_in_todays_money` | Whether the target is in today's buying power or in future euros |
 | `report_in_todays_money` | Whether to also show results adjusted for inflation |
+| `history_years` | Years of past data to learn from (e.g. `10`); `None` uses every week that all ETFs have. The youngest ETF sets the limit |
 
 To use your own amounts without committing them, create `my_config.py` in the project root. It is listed in `.gitignore`, and any key in it overrides `src/config.py`:
 

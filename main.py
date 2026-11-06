@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt   # to show the charts at the end
 
 from src.analyze import compare_to_savings, own_money, summarize, to_todays_money   # step 7 + 12
 from src.config import CONFIG, USING_PRIVATE               # step 1: settings (already validated on import)
-from src.data import download_prices                       # step 2: prices
+from src.data import download_prices, trim_history         # step 2 + 13: prices, history window
 from src.plots import fan_chart, final_hist                # step 8: charts
 from src.returns import estimate_params, log_returns       # step 3: returns, mu and cov
 from src.simulate import (                                 # steps 4-6 + 12: Monte Carlo and savings
@@ -48,6 +48,7 @@ def main():
 
     # ---- 2. Data, returns and parameters ----
     prices = download_prices(c["tickers"], c["data_start"], c["data_end"])
+    prices = trim_history(prices, c["history_years"])      # keep only the years of history asked for
     print(f"Data: {len(prices)} weeks, {prices.index[0].date()} to {prices.index[-1].date()}")
     mu, cov = estimate_params(log_returns(prices))
 
