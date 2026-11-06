@@ -3,17 +3,19 @@
 import matplotlib.pyplot as plt   # plotting library; "plt" is the usual nickname
 import numpy as np                # numpy: percentiles and other maths on arrays
 
-BLUE = "#2a6fdb"   # one colour for everything about the simulation, in different strengths
-INK = "#333333"    # dark grey for reference lines (target, own money)
+BLUE = "#2a6fdb"     # one colour for everything about the simulation, in different strengths
+INK = "#333333"      # dark grey for reference lines (target, own money)
+ORANGE = "#d9730d"   # the savings-account alternative: a clearly different colour from the portfolio
 
 
-def fan_chart(values, target=None, contributed=None):
+def fan_chart(values, target=None, own_money=None, savings=None, title="Simulated portfolio value over time"):
     """Fan chart: median path with 25-75% and 5-95% bands over time. Returns the figure.
 
-    values       array (n_sims, n_weeks + 1) from run_portfolio
-    target       optional: draw a horizontal line at this value (EUR)
-    contributed  optional: total money put in; draws your own money as a straight line from the
-                 start value (values[0, 0]) to this amount (contributions are equal every week)
+    values     array (n_sims, n_weeks + 1) from run_portfolio
+    target     optional: draw a horizontal line at this value (EUR)
+    own_money  optional: path (length n_weeks + 1) of the money you put in yourself
+    savings    optional: path (length n_weeks + 1) of the savings-account alternative
+    title      chart title (e.g. to say the values are in today's money)
     """
     n_weeks = values.shape[1] - 1                 # number of columns minus week 0
     years = np.arange(n_weeks + 1) / 52           # x-axis in years instead of weeks: easier to read
@@ -29,14 +31,15 @@ def fan_chart(values, target=None, contributed=None):
                     label="25-75% of futures")                    # darker band: middle 50%
     ax.plot(years, p50, color=BLUE, linewidth=2, label="Median")  # the typical future
 
-    if contributed is not None:                                   # only if the caller gave it
-        ax.plot([0, years[-1]], [values[0, 0], contributed], color=INK, linewidth=1.5,
-                label="Money you put in")                         # straight line: start -> total in
-    if target is not None:                                        # only if the caller gave it
+    if savings is not None:                                       # only if the caller gave it
+        ax.plot(years, savings, color=ORANGE, linewidth=2, label="Savings account instead")
+    if own_money is not None:
+        ax.plot(years, own_money, color=INK, linewidth=1.5, label="Money you put in")
+    if target is not None:
         ax.axhline(target, color=INK, linewidth=1, linestyle="--",
                    label=f"Target {target:,.0f} EUR")             # horizontal dashed line
 
-    ax.set_title("Simulated portfolio value over time")
+    ax.set_title(title)
     ax.set_xlabel("Years from now")
     ax.set_ylabel("Portfolio value (EUR)")
     ax.yaxis.set_major_formatter(lambda y, _: f"{y:,.0f}")        # 25000 -> "25,000" on the axis
@@ -47,12 +50,14 @@ def fan_chart(values, target=None, contributed=None):
     return fig
 
 
-def final_hist(values, target=None, contributed=None):
+def final_hist(values, target=None, contributed=None, savings_final=None, title=None):
     """Histogram of the final values, with the 5th / 50th / 95th percentile marked. Returns the figure.
 
-    values       array (n_sims, n_weeks + 1) from run_portfolio
-    target       optional: draw a vertical line at this value (EUR)
-    contributed  optional: draw a vertical line at the money you put in (EUR)
+    values         array (n_sims, n_weeks + 1) from run_portfolio
+    target         optional: draw a vertical line at this value (EUR)
+    contributed    optional: draw a vertical line at the money you put in (EUR)
+    savings_final  optional: draw a vertical line at the savings account's final value (EUR)
+    title          optional chart title
     """
     final = values[:, -1]                                  # last column: final value of each simulation
     p5, p50, p95 = np.percentile(final, [5, 50, 95])       # the three key percentiles
@@ -66,10 +71,14 @@ def final_hist(values, target=None, contributed=None):
     ax.axvline(p95, color=BLUE, linewidth=1.2, linestyle=":", label=f"95%: {p95:,.0f}")
     if contributed is not None:
         ax.axvline(contributed, color=INK, linewidth=1.5, label=f"Money put in: {contributed:,.0f}")
+    if savings_final is not None:
+        ax.axvline(savings_final, color=ORANGE, linewidth=2, label=f"Savings account: {savings_final:,.0f}")
     if target is not None:
         ax.axvline(target, color=INK, linewidth=1, linestyle="--", label=f"Target: {target:,.0f}")
 
-    ax.set_title(f"Final value after {(values.shape[1] - 1) / 52:.0f} years ({len(final):,} simulations)")
+    if title is None:                                             # default title if none was given
+        title = f"Final value after {(values.shape[1] - 1) / 52:.0f} years ({len(final):,} simulations)"
+    ax.set_title(title)
     ax.set_xlabel("Final portfolio value (EUR)")
     ax.set_ylabel("Number of simulations")
     ax.xaxis.set_major_formatter(lambda x, _: f"{x:,.0f}")        # 25000 -> "25,000" on the axis
@@ -102,6 +111,6 @@ if __name__ == "__main__":
     print(f"Check fan widens:        {width_end > width_1y}")
     print(f"Check median inside bands every week: {np.all((p5 <= p25) & (p25 <= p50) & (p50 <= p75) & (p75 <= p95))}")
 
-    fan_chart(values, target=CONFIG["target"], contributed=contributed)   # figure 1
+    fan_chart(values, target=CONFIG["target"])                            # figure 1 (main.py adds more lines)
     final_hist(values, target=CONFIG["target"], contributed=contributed)  # figure 2
     plt.show()                                                            # open both windows

@@ -48,9 +48,12 @@ def run_portfolio(sim_returns, weights, start_value, weekly_contribution):
 
     Every week: 1) grow each holding, 2) add the contribution, 3) rebalance to the target weights.
 
+    weekly_contribution can be ONE number (the same every week) or an array with one amount per
+    week (length n_weeks), for example from contribution_schedule() when contributions are indexed.
+
     Returns:
       values            array (n_sims, n_weeks + 1): portfolio value in EUR; column 0 = start_value
-      total_contributed the money you put in yourself: start_value + n_weeks * weekly_contribution
+      total_contributed the money you put in yourself: start_value + sum of all contributions
     """
     weights = np.asarray(weights, dtype=float)          # target weights as a numpy vector
     n_sims, n_weeks, n_assets = sim_returns.shape       # unpack the three sizes of the 3D array
@@ -58,6 +61,10 @@ def run_portfolio(sim_returns, weights, start_value, weekly_contribution):
     # Guard: one weight per asset.
     if len(weights) != n_assets:
         raise ValueError(f"Got {len(weights)} weights for {n_assets} assets.")
+
+    # Turn the contribution into one amount per week. np.broadcast_to copies a single number
+    # n_weeks times, and leaves an array that already has length n_weeks as it is.
+    contributions = np.broadcast_to(np.asarray(weekly_contribution, dtype=float), (n_weeks,))
 
     # Empty table for the results: one row per simulation, one column per week (plus week 0).
     values = np.zeros((n_sims, n_weeks + 1))
@@ -71,8 +78,8 @@ def run_portfolio(sim_returns, weights, start_value, weekly_contribution):
         # 1) Grow: a log return r means the holding is multiplied by exp(r).
         holdings = holdings * np.exp(sim_returns[:, week, :])   # all simulations and assets at once
 
-        # 2) Add the contribution to the total portfolio value.
-        total = holdings.sum(axis=1) + weekly_contribution      # sum across assets -> shape (n_sims,)
+        # 2) Add this week's contribution to the total portfolio value.
+        total = holdings.sum(axis=1) + contributions[week]      # sum across assets -> shape (n_sims,)
 
         # 3) Rebalance: split the new total over the assets by the target weights again.
         # total[:, None] turns shape (n_sims,) into (n_sims, 1) so it can multiply with weights (n_assets,).
@@ -80,8 +87,34 @@ def run_portfolio(sim_returns, weights, start_value, weekly_contribution):
 
         values[:, week + 1] = total                     # store the value at the end of this week
 
-    total_contributed = start_value + n_weeks * weekly_contribution   # your own money, no growth
-    return values, total_contributed
+    total_contributed = start_value + contributions.sum()   # your own money, no growth
+    return values, float(total_contributed)
+
+
+def contribution_schedule(weekly_contribution, n_weeks, inflation=0.0, index_every_weeks=13):
+    """Return an array with the contribution for each week (length n_weeks).
+
+    The amount is raised with inflation every `index_every_weeks` weeks (13 = every quarter).
+    Week 1 to 13 pay the base amount; week 14 to 26 pay base x (1 + inflation)^(13/52); and so on.
+    With inflation=0 every week pays the base amount.
+    """
+    weeks = np.arange(n_weeks)                          # 0, 1, 2, ..., n_weeks - 1
+    periods = weeks // index_every_weeks                # // = whole-number division: 0,0,..,0,1,1,..
+    years_passed = periods * index_every_weeks / 52     # time at the last raise, in years
+    return weekly_contribution * (1 + inflation) ** years_passed
+
+
+def run_savings(savings_rate, start_value, weekly_contribution, n_weeks):
+    """Value of a savings account over time: same money in, fixed interest, no risk.
+
+    Returns an array of length n_weeks + 1 (week 0 = start_value).
+    Trick: a savings account is a "portfolio" of one asset with the same log return every week,
+    so we reuse run_portfolio instead of writing (and testing) new bookkeeping code.
+    """
+    weekly_log_return = np.log(1 + savings_rate) / 52   # 52 of these add up to ln(1 + rate) per year
+    sim = np.full((1, n_weeks, 1), weekly_log_return)   # 1 simulation, n_weeks weeks, 1 asset
+    values, _ = run_portfolio(sim, [1.0], start_value, weekly_contribution)
+    return values[0]                                    # the one path as a plain 1D array
 
 
 # Quick check: only runs with "python -m src.simulate".

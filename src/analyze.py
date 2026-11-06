@@ -47,6 +47,60 @@ def summarize(values, contributed, target):
     }
 
 
+def deflator(n_weeks, inflation):
+    """Array of length n_weeks + 1: what 1 EUR at week t is worth in TODAY's money.
+
+    With 2% inflation, 1 EUR after one year buys what 1 / 1.02 = 0.98 EUR buys today.
+    """
+    years = np.arange(n_weeks + 1) / 52        # time of each week in years: 0, 1/52, 2/52, ...
+    return (1 + inflation) ** -years           # ** -years is the same as 1 / (1 + inflation) ** years
+
+
+def to_todays_money(values, inflation):
+    """Convert values over time (last axis = weeks, week 0 first) to today's money."""
+    values = np.asarray(values)
+    n_weeks = values.shape[-1] - 1             # shape[-1] = length of the LAST axis (works for 1D and 2D)
+    return values * deflator(n_weeks, inflation)   # broadcasting: every row is multiplied week by week
+
+
+def own_money(start_value, contributions, inflation=0.0):
+    """Path of the money you put in yourself (length n_weeks + 1), optionally in today's money.
+
+    Each contribution is converted with the inflation of the week it is paid (end of week t + 1),
+    so the total measures the buying power of everything you put in.
+    """
+    contributions = np.asarray(contributions, dtype=float)
+    d = deflator(len(contributions), inflation)          # d[0] = 1 for week 0, d[1] for week 1, ...
+    paid = contributions * d[1:]                         # contribution of week t+1 in today's money
+    return start_value + np.concatenate([[0.0], np.cumsum(paid)])   # running total, starting at week 0
+
+
+def compare_to_savings(values, savings_values):
+    """Opportunity cost: how does the portfolio do against the savings account?
+
+    values          array (n_sims, n_weeks + 1): portfolio paths
+    savings_values  array (n_weeks + 1,): the savings-account path (same money in)
+
+    Returns a dict:
+      savings_final  final value of the savings account
+      prob_beat      share of simulations where the portfolio ends ABOVE the savings account
+      extra_p5, extra_p50, extra_p95
+                     portfolio final minus savings final, at the 5th / 50th / 95th percentile
+                     (negative = you would have been better off with the savings account)
+    """
+    final = np.asarray(values)[:, -1]                    # final portfolio value of each simulation
+    savings_final = float(savings_values[-1])            # one number: the savings account is risk-free
+    extra = final - savings_final                        # extra gain (or loss) from investing
+    p5, p50, p95 = np.percentile(extra, [5, 50, 95])
+    return {
+        "savings_final": savings_final,
+        "prob_beat": float(np.mean(final > savings_final)),
+        "extra_p5": float(p5),
+        "extra_p50": float(p50),
+        "extra_p95": float(p95),
+    }
+
+
 # Quick check: only runs with "python -m src.analyze".
 if __name__ == "__main__":
     from src.config import CONFIG                            # settings (step 1)
@@ -78,3 +132,4 @@ if __name__ == "__main__":
     # The checks for this step.
     print(f"\nCheck p5 < p50 < p95:          {s['p5'] < s['p50'] < s['p95']}")
     print(f"Check 0 <= prob_target <= 1:   {0 <= s['prob_target'] <= 1}")
+    print("(This quick check uses flat contributions and nominal money; main.py shows the full picture.)")

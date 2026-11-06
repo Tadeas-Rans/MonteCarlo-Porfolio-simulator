@@ -38,6 +38,13 @@ CONFIG = {
     "n_sims": 10_000,                     # number of simulated futures (underscore is just for readability)
     "target": 20_000,                     # EXAMPLE final value in EUR we hope to reach
     "seed": 42,                           # fixed starting point for the random numbers, so results repeat
+    # ---- Inflation and the savings-account alternative (all in the same currency) ----
+    "inflation": 0.02,                    # assumed inflation per year (0.02 = 2%)
+    "index_contributions": True,          # raise the weekly contribution with inflation?
+    "index_every_weeks": 13,              # how often to raise it: 13 weeks = every quarter
+    "savings_rate": 0.02,                 # EXAMPLE savings-account interest per year (0.02 = 2%)
+    "target_in_todays_money": True,       # True: the target means today's buying power
+    # ---- Price history ----
     "data_start": "2016-01-01",           # first date of price history to download (YYYY-MM-DD)
     "data_end": "2026-11-01",             # last date; fixed (not "today") so every run uses the same data
 }
@@ -84,6 +91,12 @@ def validate_config(config):
         raise ValueError("years must be greater than 0.")
     if config["n_sims"] <= 0:
         raise ValueError("n_sims must be greater than 0.")
+    if config["inflation"] <= -1:
+        raise ValueError("inflation must be greater than -1 (= -100%).")
+    if config["savings_rate"] <= -1:
+        raise ValueError("savings_rate must be greater than -1 (= -100%).")
+    if not isinstance(config["index_every_weeks"], int) or config["index_every_weeks"] < 1:
+        raise ValueError("index_every_weeks must be a whole number of at least 1.")
 
 
 # Run the check as soon as this file is imported, so a bad setting is caught immediately.
@@ -100,5 +113,7 @@ if __name__ == "__main__":
     print(f"Years:               {CONFIG['years']}")
     print(f"Simulations:         {CONFIG['n_sims']}")
     print(f"Target:              {CONFIG['target']} EUR")
+    print(f"Inflation:           {CONFIG['inflation']:.1%} per year")
+    print(f"Savings rate:        {CONFIG['savings_rate']:.1%} per year")
     print(f"Seed:                {CONFIG['seed']}")
     print("Config is valid.")                                     # we only get here if no error was raised

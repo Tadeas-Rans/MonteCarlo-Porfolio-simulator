@@ -9,64 +9,102 @@ from pathlib import Path          # for the figures/ folder
 
 import matplotlib.pyplot as plt   # to show the charts at the end
 
-from src.analyze import summarize                          # step 7: the six key numbers
+from src.analyze import compare_to_savings, own_money, summarize, to_todays_money   # step 7 + 12
 from src.config import CONFIG, USING_PRIVATE               # step 1: settings (already validated on import)
 from src.data import download_prices                       # step 2: prices
 from src.plots import fan_chart, final_hist                # step 8: charts
 from src.returns import estimate_params, log_returns       # step 3: returns, mu and cov
-from src.simulate import run_portfolio, simulate_returns   # steps 4-6: Monte Carlo
+from src.simulate import (                                 # steps 4-6 + 12: Monte Carlo and savings
+    contribution_schedule,
+    run_portfolio,
+    run_savings,
+    simulate_returns,
+)
 
 FIGURES_DIR = Path(__file__).resolve().parent / "figures"  # charts are saved here (in .gitignore)
+
+
+def row(label, nominal, real, fmt="{:>12,.0f}"):
+    """Print one line of the results table: a label, then the nominal and today's-money value."""
+    print(f"{label:<32}{fmt.format(nominal)}{fmt.format(real)}")
 
 
 def main():
     """Run the full simulation and print and plot the results."""
     t0 = time.time()                                       # start the stopwatch
+    c = CONFIG                                             # short name, to keep lines readable
 
     # ---- 1. Settings ----
-    n_weeks = CONFIG["years"] * 52                         # horizon in weeks
+    n_weeks = c["years"] * 52                              # horizon in weeks
+    infl = c["inflation"]                                  # inflation per year
     source = "PRIVATE (my_config.py)" if USING_PRIVATE else "EXAMPLE (src/config.py)"
     print(f"Settings: {source}")
-    print(f"  {len(CONFIG['tickers'])} ETFs, start {CONFIG['start_value']:,} EUR, "
-          f"{CONFIG['weekly_contribution']:,} EUR/week, {CONFIG['years']} years, "
-          f"{CONFIG['n_sims']:,} simulations, target {CONFIG['target']:,} EUR")
+    print(f"  {len(c['tickers'])} ETFs, start {c['start_value']:,} EUR, "
+          f"{c['weekly_contribution']:,} EUR/week, {c['years']} years, {c['n_sims']:,} simulations")
+    print(f"  inflation {infl:.1%}/yr, contributions indexed: {c['index_contributions']} "
+          f"(every {c['index_every_weeks']} weeks), savings rate {c['savings_rate']:.1%}/yr")
 
-    # ---- 2. Data ----
-    prices = download_prices(CONFIG["tickers"], CONFIG["data_start"], CONFIG["data_end"])
+    # ---- 2. Data, returns and parameters ----
+    prices = download_prices(c["tickers"], c["data_start"], c["data_end"])
     print(f"Data: {len(prices)} weeks, {prices.index[0].date()} to {prices.index[-1].date()}")
+    mu, cov = estimate_params(log_returns(prices))
 
-    # ---- 3. Returns and parameters ----
-    returns = log_returns(prices)
-    mu, cov = estimate_params(returns)
+    # ---- 3. Contributions: one amount per week, raised with inflation if switched on ----
+    index_rate = infl if c["index_contributions"] else 0.0  # 0 inflation = no raises
+    contributions = contribution_schedule(c["weekly_contribution"], n_weeks, index_rate, c["index_every_weeks"])
 
-    # ---- 4. Simulate ----
-    sim = simulate_returns(mu, cov, n_weeks, CONFIG["n_sims"], CONFIG["seed"])
-    values, contributed = run_portfolio(
-        sim, CONFIG["weights"], CONFIG["start_value"], CONFIG["weekly_contribution"]
-    )
+    # ---- 4. Simulate the portfolio, and the savings account with the same money ----
+    sim = simulate_returns(mu, cov, n_weeks, c["n_sims"], c["seed"])
+    values, contributed = run_portfolio(sim, c["weights"], c["start_value"], contributions)
     del sim                                                # free ~0.8 GB; only `values` is needed now
+    savings = run_savings(c["savings_rate"], c["start_value"], contributions, n_weeks)
 
-    # ---- 5. Analyze ----
-    s = summarize(values, contributed, CONFIG["target"])
+    # ---- 5. The same results in today's money ----
+    values_real = to_todays_money(values, infl)
+    savings_real = to_todays_money(savings, infl)
+    own_real = own_money(c["start_value"], contributions, infl)       # your money, in today's buying power
 
-    # ---- 6. Print the summary ----
-    print("\n" + "=" * 46)                                 # a line of 46 "=" signs
-    print(f" RESULTS after {CONFIG['years']} years")
-    print("=" * 46)
-    print(f"{'Money you put in:':<30}{contributed:>10,.0f} EUR")
-    print(f"{'Final value, bad case (5%):':<30}{s['p5']:>10,.0f} EUR")
-    print(f"{'Final value, median (50%):':<30}{s['p50']:>10,.0f} EUR")
-    print(f"{'Final value, good case (95%):':<30}{s['p95']:>10,.0f} EUR")
-    print(f"{'Chance to reach target:':<30}{s['prob_target']:>10.1%}")
-    print(f"{'5% Value at Risk:':<30}{s['var_5']:>10,.0f} EUR")
-    print(f"{'Median: growth / own money:':<30}{s['growth_share']:>9.0%} / {1 - s['growth_share']:.0%}")
-    print("=" * 46)
-    print("Assumes normal returns from past data; no fees, taxes or crashes beyond history.")
+    # The target in both units: (1 + inflation)^years converts between today and the end.
+    price_rise = (1 + infl) ** c["years"]
+    if c["target_in_todays_money"]:
+        target_real, target_nominal = c["target"], c["target"] * price_rise
+    else:
+        target_nominal, target_real = c["target"], c["target"] / price_rise
 
-    # ---- 7. Charts: save to figures/ and show ----
+    # ---- 6. Analyze ----
+    s_nom = summarize(values, contributed, target_nominal)
+    s_real = summarize(values_real, own_real[-1], target_real)
+    cmp_nom = compare_to_savings(values, savings)
+    cmp_real = compare_to_savings(values_real, savings_real)
+
+    # ---- 7. Print the results table ----
+    line = "=" * 56
+    print(f"\n{line}\n RESULTS after {c['years']} years{'Nominal':>21}{'Today':>12}\n{line}")
+    row("Money you put in", contributed, own_real[-1])
+    row("Final value, bad case (5%)", s_nom["p5"], s_real["p5"])
+    row("Final value, median (50%)", s_nom["p50"], s_real["p50"])
+    row("Final value, good case (95%)", s_nom["p95"], s_real["p95"])
+    row("Target", target_nominal, target_real)
+    print(f"{'Chance to reach target':<32}{s_nom['prob_target']:>12.1%}")
+    row("5% Value at Risk", s_nom["var_5"], s_real["var_5"])
+    row("Median: share from growth", s_nom["growth_share"], s_real["growth_share"], "{:>12.0%}")
+    print(f"{line}\n OPPORTUNITY COST vs savings account at {c['savings_rate']:.1%}/yr\n{line}")
+    row("Savings account final value", cmp_nom["savings_final"], cmp_real["savings_final"])
+    print(f"{'Chance portfolio beats savings':<32}{cmp_nom['prob_beat']:>12.1%}")
+    row("Extra from investing, bad (5%)", cmp_nom["extra_p5"], cmp_real["extra_p5"])
+    row("Extra from investing, median", cmp_nom["extra_p50"], cmp_real["extra_p50"])
+    row("Extra from investing, good (95%)", cmp_nom["extra_p95"], cmp_real["extra_p95"])
+    print(line)
+    print("Assumes normal returns from past data, fixed inflation and savings rate;")
+    print("no fees, taxes or crashes beyond history.")
+
+    # ---- 8. Charts in today's money: save to figures/ and show ----
     FIGURES_DIR.mkdir(exist_ok=True)                       # create figures/ if needed
-    fan = fan_chart(values, target=CONFIG["target"], contributed=contributed)
-    hist = final_hist(values, target=CONFIG["target"], contributed=contributed)
+    fan = fan_chart(values_real, target=target_real, own_money=own_real, savings=savings_real,
+                    title="Simulated portfolio value over time (today's money)")
+    hist = final_hist(values_real, target=target_real, contributed=own_real[-1],
+                      savings_final=savings_real[-1],
+                      title=f"Final value after {c['years']} years (today's money)")
     fan.savefig(FIGURES_DIR / "fan_chart.png", dpi=150)    # dpi = resolution (dots per inch)
     hist.savefig(FIGURES_DIR / "final_hist.png", dpi=150)
     print(f"\nCharts saved to {FIGURES_DIR.name}/  (finished in {time.time() - t0:.1f} s)")
