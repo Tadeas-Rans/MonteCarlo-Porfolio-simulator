@@ -8,7 +8,12 @@ import numpy as np   # numpy: arrays and comparisons
 import pytest        # pytest: the test runner; pytest.raises checks that an error happens
 
 from src.config import CONFIG, validate_config            # settings and their check (step 1)
-from src.simulate import run_portfolio, simulate_returns  # the functions we test (steps 4-6)
+from src.simulate import (                                # the functions we test (steps 4-6 + 12)
+    contribution_schedule,
+    run_portfolio,
+    run_savings,
+    simulate_returns,
+)
 
 # Small, made-up inputs so the tests are fast and don't need internet or downloaded data.
 MU = np.array([0.002, 0.0005])            # two assets: a "stock" and a "bond"
@@ -74,3 +79,44 @@ def test_weights_not_summing_to_one_raise_clear_error():
 
     with pytest.raises(ValueError, match="must add up to 1"):
         validate_config(bad)
+
+
+# ---------------- Step 12: indexed contributions and the savings account ----------------
+
+def test_contribution_schedule_raises_every_quarter():
+    """With 2% inflation: weeks 1-13 pay the base, week 14 pays base x 1.02^(1/4), week 53 pays base x 1.02."""
+    c = contribution_schedule(40, n_weeks=104, inflation=0.02, index_every_weeks=13)
+
+    assert len(c) == 104                                     # one amount per week
+    assert np.allclose(c[:13], 40)                           # first quarter: base amount
+    assert np.isclose(c[13], 40 * 1.02 ** 0.25)              # second quarter: one quarter of inflation
+    assert np.isclose(c[52], 40 * 1.02)                      # after exactly one year: one year of inflation
+
+
+def test_contribution_schedule_without_inflation_is_flat():
+    """Inflation 0 means no raises at all."""
+    assert np.allclose(contribution_schedule(25, n_weeks=60, inflation=0.0), 25)
+
+
+def test_array_contribution_same_as_number():
+    """Passing 52 copies of 25 must give exactly the same result as passing the number 25."""
+    sim = simulate_returns(MU, COV, n_weeks=52, n_sims=10, seed=3)
+    a, total_a = run_portfolio(sim, WEIGHTS, 1000, 25)
+    b, total_b = run_portfolio(sim, WEIGHTS, 1000, np.full(52, 25.0))
+
+    assert np.allclose(a, b)
+    assert np.isclose(total_a, total_b)
+
+
+def test_savings_grow_by_exactly_the_rate_in_one_year():
+    """No contributions, 3% interest, 52 weeks: the savings account ends at start x 1.03."""
+    savings = run_savings(0.03, start_value=1000, weekly_contribution=0, n_weeks=52)
+
+    assert savings.shape == (53,)                            # week 0 to week 52
+    assert np.isclose(savings[-1], 1030)
+
+
+def test_savings_at_zero_rate_is_just_your_money():
+    """0% interest: the savings account holds exactly what you put in."""
+    savings = run_savings(0.0, start_value=500, weekly_contribution=10, n_weeks=20)
+    assert np.isclose(savings[-1], 500 + 20 * 10)
