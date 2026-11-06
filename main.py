@@ -24,9 +24,12 @@ from src.simulate import (                                 # steps 4-6 + 12: Mon
 FIGURES_DIR = Path(__file__).resolve().parent / "figures"  # charts are saved here (in .gitignore)
 
 
-def row(label, nominal, real, fmt="{:>12,.0f}"):
-    """Print one line of the results table: a label, then the nominal and today's-money value."""
-    print(f"{label:<32}{fmt.format(nominal)}{fmt.format(real)}")
+def row(label, nominal, real=None, fmt="{:>12,.0f}"):
+    """Print one line of the results table: a label, the nominal value and (optionally) today's money."""
+    text = f"{label:<32}{fmt.format(nominal)}"     # label padded to 32 characters, then the number
+    if real is not None:                            # second column only when today's money is shown
+        text += fmt.format(real)
+    print(text)
 
 
 def main():
@@ -78,33 +81,43 @@ def main():
     cmp_real = compare_to_savings(values_real, savings_real)
 
     # ---- 7. Print the results table ----
+    # show_real switches the second column ("today's money") on or off; nominal is always shown.
+    show_real = c["report_in_todays_money"]
+    def real_or_none(x):                                   # helper: the value if shown, else None
+        return x if show_real else None
+
     line = "=" * 56
-    print(f"\n{line}\n RESULTS after {c['years']} years{'Nominal':>21}{'Today':>12}\n{line}")
-    row("Money you put in", contributed, own_real[-1])
-    row("Final value, bad case (5%)", s_nom["p5"], s_real["p5"])
-    row("Final value, median (50%)", s_nom["p50"], s_real["p50"])
-    row("Final value, good case (95%)", s_nom["p95"], s_real["p95"])
-    row("Target", target_nominal, target_real)
+    header = f"{'Nominal':>21}" + (f"{'Today':>12}" if show_real else "")
+    print(f"\n{line}\n RESULTS after {c['years']} years{header}\n{line}")
+    row("Money you put in", contributed, real_or_none(own_real[-1]))
+    row("Final value, bad case (5%)", s_nom["p5"], real_or_none(s_real["p5"]))
+    row("Final value, median (50%)", s_nom["p50"], real_or_none(s_real["p50"]))
+    row("Final value, good case (95%)", s_nom["p95"], real_or_none(s_real["p95"]))
+    row("Target", target_nominal, real_or_none(target_real))
     print(f"{'Chance to reach target':<32}{s_nom['prob_target']:>12.1%}")
-    row("5% Value at Risk", s_nom["var_5"], s_real["var_5"])
-    row("Median: share from growth", s_nom["growth_share"], s_real["growth_share"], "{:>12.0%}")
+    row("5% Value at Risk", s_nom["var_5"], real_or_none(s_real["var_5"]))
+    row("Median: share from growth", s_nom["growth_share"], real_or_none(s_real["growth_share"]), "{:>12.0%}")
     print(f"{line}\n OPPORTUNITY COST vs savings account at {c['savings_rate']:.1%}/yr\n{line}")
-    row("Savings account final value", cmp_nom["savings_final"], cmp_real["savings_final"])
+    row("Savings account final value", cmp_nom["savings_final"], real_or_none(cmp_real["savings_final"]))
     print(f"{'Chance portfolio beats savings':<32}{cmp_nom['prob_beat']:>12.1%}")
-    row("Extra from investing, bad (5%)", cmp_nom["extra_p5"], cmp_real["extra_p5"])
-    row("Extra from investing, median", cmp_nom["extra_p50"], cmp_real["extra_p50"])
-    row("Extra from investing, good (95%)", cmp_nom["extra_p95"], cmp_real["extra_p95"])
+    row("Extra from investing, bad (5%)", cmp_nom["extra_p5"], real_or_none(cmp_real["extra_p5"]))
+    row("Extra from investing, median", cmp_nom["extra_p50"], real_or_none(cmp_real["extra_p50"]))
+    row("Extra from investing, good (95%)", cmp_nom["extra_p95"], real_or_none(cmp_real["extra_p95"]))
     print(line)
     print("Assumes normal returns from past data, fixed inflation and savings rate;")
     print("no fees, taxes or crashes beyond history.")
 
-    # ---- 8. Charts in today's money: save to figures/ and show ----
+    # ---- 8. Charts (nominal, or today's money if switched on): save to figures/ and show ----
+    if show_real:                                          # pick which numbers go into the charts
+        v, own, sav, tgt, unit = values_real, own_real, savings_real, target_real, "today's money"
+    else:
+        own_nominal = own_money(c["start_value"], contributions)      # inflation 0 = plain euros
+        v, own, sav, tgt, unit = values, own_nominal, savings, target_nominal, "nominal EUR"
     FIGURES_DIR.mkdir(exist_ok=True)                       # create figures/ if needed
-    fan = fan_chart(values_real, target=target_real, own_money=own_real, savings=savings_real,
-                    title="Simulated portfolio value over time (today's money)")
-    hist = final_hist(values_real, target=target_real, contributed=own_real[-1],
-                      savings_final=savings_real[-1],
-                      title=f"Final value after {c['years']} years (today's money)")
+    fan = fan_chart(v, target=tgt, own_money=own, savings=sav,
+                    title=f"Simulated portfolio value over time ({unit})")
+    hist = final_hist(v, target=tgt, contributed=own[-1], savings_final=sav[-1],
+                      title=f"Final value after {c['years']} years ({unit})")
     fan.savefig(FIGURES_DIR / "fan_chart.png", dpi=150)    # dpi = resolution (dots per inch)
     hist.savefig(FIGURES_DIR / "final_hist.png", dpi=150)
     print(f"\nCharts saved to {FIGURES_DIR.name}/  (finished in {time.time() - t0:.1f} s)")

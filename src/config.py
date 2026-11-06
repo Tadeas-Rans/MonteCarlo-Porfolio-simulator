@@ -43,7 +43,8 @@ CONFIG = {
     "index_contributions": True,          # raise the weekly contribution with inflation?
     "index_every_weeks": 13,              # how often to raise it: 13 weeks = every quarter
     "savings_rate": 0.02,                 # EXAMPLE savings-account interest per year (0.02 = 2%)
-    "target_in_todays_money": True,       # True: the target means today's buying power
+    "target_in_todays_money": False,      # False: the target is in future (nominal) euros
+    "report_in_todays_money": False,      # False: show everything in nominal euros; True: also today's money
     # ---- Price history ----
     "data_start": "2016-01-01",           # first date of price history to download (YYYY-MM-DD)
     "data_end": "2026-11-01",             # last date; fixed (not "today") so every run uses the same data
