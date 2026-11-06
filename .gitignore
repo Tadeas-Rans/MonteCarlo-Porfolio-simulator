@@ -1,0 +1,24 @@
+# Private settings with real personal amounts
+my_config.py
+
+# Downloaded price data (can always be re-downloaded)
+data/
+
+# Charts made by main.py (may show private amounts)
+figures/
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# pytest cache
+.pytest_cache/
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# macOS folder metadata
+.DS_Store
+
+# Personal editor settings
+.vscode/
