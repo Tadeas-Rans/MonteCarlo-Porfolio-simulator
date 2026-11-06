@@ -44,17 +44,26 @@ def main():
     print(f"Settings: {source}")
     print(f"  {len(c['tickers'])} ETFs, start {c['start_value']:,} EUR, "
           f"{c['weekly_contribution']:,} EUR/week, {c['years']} years, {c['n_sims']:,} simulations")
-    print(f"  inflation {infl:.1%}/yr, contributions indexed: {c['index_contributions']} "
-          f"(every {c['index_every_weeks']} weeks), savings rate {c['savings_rate']:.1%}/yr")
+    print(f"  inflation {infl:.1%}/yr, savings rate {c['savings_rate']:.1%}/yr")
 
     # ---- 2. Data, returns and parameters ----
     prices = download_prices(c["tickers"], c["data_start"], c["data_end"])
     print(f"Data: {len(prices)} weeks, {prices.index[0].date()} to {prices.index[-1].date()}")
     mu, cov = estimate_params(log_returns(prices))
 
-    # ---- 3. Contributions: one amount per week, raised with inflation if switched on ----
-    index_rate = infl if c["index_contributions"] else 0.0  # 0 inflation = no raises
+    # ---- 3. Contributions: one amount per week, raised over time if switched on ----
+    if not c["index_contributions"]:                       # switch off: the same amount every week
+        index_rate = 0.0
+    elif c["contribution_growth"] is None:                 # switch on, no own rate: follow inflation
+        index_rate = infl
+    else:                                                  # switch on with an own growth rate
+        index_rate = c["contribution_growth"]
     contributions = contribution_schedule(c["weekly_contribution"], n_weeks, index_rate, c["index_every_weeks"])
+    if index_rate == 0:
+        print("  contributions: flat, the same amount every week")
+    else:
+        print(f"  contributions: +{index_rate:.1%}/yr, raised every {c['index_every_weeks']} weeks "
+              f"({contributions[0]:,.2f} -> {contributions[-1]:,.2f} EUR/week)")
 
     # ---- 4. Simulate the portfolio, and the savings account with the same money ----
     sim = simulate_returns(mu, cov, n_weeks, c["n_sims"], c["seed"])

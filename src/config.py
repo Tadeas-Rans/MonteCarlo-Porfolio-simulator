@@ -40,7 +40,8 @@ CONFIG = {
     "seed": 42,                           # fixed starting point for the random numbers, so results repeat
     # ---- Inflation and the savings-account alternative (all in the same currency) ----
     "inflation": 0.02,                    # assumed inflation per year (0.02 = 2%)
-    "index_contributions": True,          # raise the weekly contribution with inflation?
+    "index_contributions": True,          # SWITCH: raise the weekly contribution over time? (False = flat)
+    "contribution_growth": None,          # how fast per year; None = follow inflation, or e.g. 0.05 = 5%
     "index_every_weeks": 13,              # how often to raise it: 13 weeks = every quarter
     "savings_rate": 0.02,                 # EXAMPLE savings-account interest per year (0.02 = 2%)
     "target_in_todays_money": False,      # False: the target is in future (nominal) euros
@@ -96,6 +97,9 @@ def validate_config(config):
         raise ValueError("inflation must be greater than -1 (= -100%).")
     if config["savings_rate"] <= -1:
         raise ValueError("savings_rate must be greater than -1 (= -100%).")
+    growth = config["contribution_growth"]
+    if growth is not None and growth <= -1:            # None is allowed: it means "follow inflation"
+        raise ValueError("contribution_growth must be None or greater than -1 (= -100%).")
     if not isinstance(config["index_every_weeks"], int) or config["index_every_weeks"] < 1:
         raise ValueError("index_every_weeks must be a whole number of at least 1.")
 
